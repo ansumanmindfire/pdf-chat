@@ -1,23 +1,14 @@
-"""API router for chat sessions, conversational RAG Q&A, and chat history endpoints."""
+"""API router for conversational RAG chat endpoint."""
 
-import logging
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.config import logger
 from app.database.session import get_db
-from app.repositories import DocumentRepository, ChatRepository
+from app.repositories import ChatRepository
 from app.services.rag_service import ask_pdf
-from app.schemas.schemas import (
-    ChatSessionCreate,
-    ChatSessionResponse,
-    ChatRequest,
-    ChatResponse,
-    ChatHistoryResponse,
-    ChatMessageResponse,
-)
+from app.schemas.schemas import ChatRequest, ChatResponse
 from app.exceptions.custom_exceptions import (
-    DocumentNotFoundException,
     SessionNotFoundException,
     RAGGenerationException,
 )
@@ -26,82 +17,46 @@ router = APIRouter()
 
 
 @router.post(
-    "/sessions",
-    response_model=ChatSessionResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create Chat Session",
-    description="Creates a new chat session linked to a specific uploaded PDF document.",
-)
-def create_session(
-    body: ChatSessionCreate,
-    db: Session = Depends(get_db),
-):
-    """Creates a new chat session for a document."""
-    doc = DocumentRepository.get_by_id(db, body.document_id)
-    if not doc:
-        raise DocumentNotFoundException(body.document_id)
-
-    session_name = body.session_name or f"Chat on {doc.filename}"
-    chat_session = ChatRepository.create_session(
-        db=db,
-        document_id=body.document_id,
-        session_name=session_name,
-    )
-    return chat_session
-
-
-@router.post(
     "/",
     response_model=ChatResponse,
-    summary="Ask Question (RAG)",
-    description="Queries the PDF document using LCEL RAG chain, includes chat history memory, and returns answer + page citations.",
+    status_code=status.HTTP_200_OK,
+    summary="Ask Question via RAG Chat",
+    description="Processes user question, retrieves context from vector DB, includes past chat history, and returns AI answer with page citations.",
 )
-def query_rag(
-    body: ChatRequest,
+def chat_with_pdf(
+    request: ChatRequest,
     db: Session = Depends(get_db),
 ):
-    """Executes RAG Q&A with conversational memory support."""
-    if body.session_id:
-        session_rec = ChatRepository.get_session_by_id(db, body.session_id)
-        if not session_rec:
-            raise SessionNotFoundException(body.session_id)
+    """Processes a user question against document vector store using chat session memory.
+
+    Args:
+        request (ChatRequest): Request payload containing question and session_id.
+        db (Session): Database session dependency.
+
+    Returns:
+        ChatResponse: Object containing AI answer text, cited page numbers, and session_id.
+
+    Raises:
+        SessionNotFoundException: If session_id is not found in database.
+        RAGGenerationException: If vector search or LLM answer generation fails.
+    """
+    # Verify chat session exists in database
+    session_record = ChatRepository.get_session_by_id(db, request.session_id)
+    if not session_record:
+        raise SessionNotFoundException(f"Chat session '{request.session_id}' not found.")
 
     try:
         result = ask_pdf(
-            question=body.question,
-            session_id=body.session_id,
+            question=request.question,
+            session_id=request.session_id,
         )
+
         return ChatResponse(
             answer=result["answer"],
             source_pages=result["source_pages"],
-            session_id=result.get("session_id"),
+            session_id=result["session_id"],
         )
-    except (DocumentNotFoundException, SessionNotFoundException):
-        raise
+
     except Exception as e:
-        logger.error(f"Error processing chat request: {e}")
+        logger.error(f"Error during RAG generation for session '{request.session_id}': {e}")
         raise RAGGenerationException(str(e))
-
-
-@router.get(
-    "/history/{session_id}",
-    response_model=ChatHistoryResponse,
-    summary="Get Chat Session History",
-    description="Retrieves the full list of past user questions and AI responses for a chat session.",
-)
-def get_chat_history(
-    session_id: str,
-    db: Session = Depends(get_db),
-):
-    """Fetches chat message history for a session."""
-    session_rec = ChatRepository.get_session_by_id(db, session_id)
-    if not session_rec:
-        raise SessionNotFoundException(session_id)
-
-    messages = ChatRepository.get_session_messages(db, session_id)
-    msg_responses = [ChatMessageResponse.model_validate(msg) for msg in messages]
-
-    return ChatHistoryResponse(
-        session_id=session_id,
-        messages=msg_responses,
-    )

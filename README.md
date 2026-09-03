@@ -1,6 +1,6 @@
 # PDF-Chat
 
-Retrieval-Augmented Generation (RAG) backend REST API using **FastAPI**, **LangChain**, **FAISS**, **SQLite**
+Retrieval-Augmented Generation (RAG) backend REST API using **FastAPI**, **LangChain**, **FAISS**, **SQLite**, and **Google Gemini**.
 
 ---
 
@@ -28,15 +28,12 @@ poetry run uvicorn app.main:app --reload
 
 ---
 
-## REST API Endpoints
+## REST API Endpoints (2 Core Endpoints)
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| **POST** | `/api/v1/documents/upload` | Upload & index a PDF document into FAISS |
-| **GET** | `/api/v1/documents/` | List all processed PDF documents |
-| **POST** | `/api/v1/chat/sessions` | Create a new chat session linked to a PDF |
-| **POST** | `/api/v1/chat/` | Ask questions with conversational memory & page citations |
-| **GET** | `/api/v1/chat/history/{id}` | Retrieve past message history for a session |
+| **POST** | `/api/v1/upload` | Upload PDF, parse chunks, index FAISS, and auto-initialize `session_id` |
+| **POST** | `/api/v1/chat/` | Ask question with `session_id`, retrieve context & history, return AI answer + page citations |
 
 ---
 
@@ -51,7 +48,7 @@ app/
 ├── exceptions/          # Custom Exceptions & Global Exception Handlers
 ├── models/              # Database Models
 ├── repositories/        # Database CRUD Layer
-├── routers/             # REST Endpoints
+├── routers/             # REST Endpoints (Document Upload & Chat)
 ├── schemas/             # Pydantic Request/Response Validation Schemas
-└── services/            # Core Services
+└── services/            # Core Services (PDF Parsing, FAISS, RAG Chain)
 ```

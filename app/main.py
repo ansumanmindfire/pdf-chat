@@ -42,7 +42,7 @@ app.add_exception_handler(BaseAppException, app_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
 # Register API Routers
-app.include_router(document_router, prefix="/api/v1/documents", tags=["Documents"])
+app.include_router(document_router, prefix="/api/v1", tags=["Upload"])
 app.include_router(chat_router, prefix="/api/v1/chat", tags=["Chat"])
 
 
