@@ -1,23 +1,9 @@
-"""Schemas package containing Pydantic models for API request/response validation."""
+"""Schemas package containing request/response models."""
 
-from app.schemas.schemas import (
-    DocumentResponse,
-    DocumentListResponse,
-    ChatSessionCreate,
-    ChatSessionResponse,
-    ChatRequest,
-    ChatResponse,
-    ChatMessageResponse,
-    ChatHistoryResponse,
-)
+from app.schemas.schemas import UploadResponse, ChatRequest, ChatResponse
 
 __all__ = [
-    "DocumentResponse",
-    "DocumentListResponse",
-    "ChatSessionCreate",
-    "ChatSessionResponse",
+    "UploadResponse",
     "ChatRequest",
     "ChatResponse",
-    "ChatMessageResponse",
-    "ChatHistoryResponse",
 ]

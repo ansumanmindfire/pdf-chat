@@ -1,4 +1,4 @@
-"""API router for document upload and document management endpoints."""
+"""API router for document upload and session initialization."""
 
 import os
 import uuid
@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 from app.config import settings, logger
 from app.constants import ALLOWED_EXTENSIONS
 from app.database.session import get_db
-from app.repositories import DocumentRepository
+from app.repositories import DocumentRepository, ChatRepository
 from app.services.pdf_service import load_and_chunk_pdf
 from app.services.vector_service import create_faiss_vector_store
-from app.schemas.schemas import DocumentResponse, DocumentListResponse
+from app.schemas.schemas import UploadResponse
 from app.exceptions.custom_exceptions import InvalidFileException, PDFProcessingException
 
 router = APIRouter()
@@ -21,16 +21,28 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
 @router.post(
     "/upload",
-    response_model=DocumentResponse,
+    response_model=UploadResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Upload and Process PDF Document",
-    description="Uploads a PDF file, parses page chunks, builds FAISS vector store, and saves document record.",
+    summary="Upload PDF and Create Session",
+    description="Uploads a PDF file, parses chunks, builds FAISS vector index, and auto-initializes a chat session.",
 )
 async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    """Handles PDF file upload, chunk parsing, vector indexing, and database record creation."""
+    """Handles PDF file upload, vector indexing, and automatic chat session creation.
+
+    Args:
+        file (UploadFile): Uploaded PDF file stream.
+        db (Session): Database session dependency.
+
+    Returns:
+        UploadResponse: Object containing session_id, document_id, filename, and created_at.
+
+    Raises:
+        InvalidFileException: If uploaded file is empty or not a PDF.
+        PDFProcessingException: If PDF parsing or vector indexing fails.
+    """
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise InvalidFileException(f"Only PDF files ({', '.join(ALLOWED_EXTENSIONS)}) are allowed.")
@@ -57,7 +69,7 @@ async def upload_document(
         index_path = f"data/faiss_index_{uuid.uuid4().hex[:8]}"
         create_faiss_vector_store(chunks, index_path=index_path)
 
-        # Create Document Record in DB via Repository
+        # Create Document Record in DB
         doc_record = DocumentRepository.create(
             db=db,
             filename=file.filename,
@@ -65,22 +77,21 @@ async def upload_document(
             faiss_index_path=index_path,
         )
 
-        return doc_record
+        chat_session = ChatRepository.create_session(
+            db=db,
+            document_id=doc_record.id,
+            session_name=f"Chat - {file.filename}",
+        )
+
+        return UploadResponse(
+            session_id=chat_session.id,
+            document_id=doc_record.id,
+            filename=doc_record.filename,
+            created_at=chat_session.created_at,
+        )
 
     except InvalidFileException:
         raise
     except Exception as e:
         logger.error(f"Error processing uploaded PDF: {e}")
         raise PDFProcessingException(str(e))
-
-
-@router.get(
-    "/",
-    response_model=DocumentListResponse,
-    summary="List All Documents",
-    description="Retrieves a list of all uploaded PDF document records.",
-)
-def list_documents(db: Session = Depends(get_db)):
-    """Fetches all uploaded documents from the database."""
-    documents = DocumentRepository.get_all(db)
-    return DocumentListResponse(documents=documents)
