@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/",
+    "/chat",
     response_model=ChatResponse,
     status_code=status.HTTP_200_OK,
     summary="Ask Question via RAG Chat",
